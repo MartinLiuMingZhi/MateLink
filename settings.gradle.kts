@@ -20,18 +20,18 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "MateLink"
-include(
-    ":app",
-    ":core:common",
-    ":core:network",
-    ":core:database",
-    ":core:ui",
-    ":core:data",
-    ":core:di",
-    ":feature:auth",
-    ":feature:space",
-    ":feature:chat",
-    ":feature:moment",
-    ":feature:profile"
-)
- 
+include(":app")
+include(":core")
+include(":feature")
+include(":shared")
+include(":core:common")
+include(":core:network")
+include(":core:database")
+include(":core:ui")
+include(":core:data")
+include(":core:di")
+include(":feature:auth")
+include(":feature:space")
+include(":feature:chat")
+include(":feature:moment")
+include(":feature:profile")

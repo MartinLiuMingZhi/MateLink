@@ -23,6 +23,7 @@
             <option value="$PROJECT_DIR$/feature/moment" />
             <option value="$PROJECT_DIR$/feature/profile" />
             <option value="$PROJECT_DIR$/feature/space" />
+            <option value="$PROJECT_DIR$/shared" />
           </set>
         </option>
         <option name="resolveExternalAnnotations" value="false" />

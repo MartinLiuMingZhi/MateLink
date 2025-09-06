@@ -51,19 +51,19 @@ android {
 
 dependencies {
     // Core modules
-    implementation(project(":core:common"))
-    implementation(project(":core:network"))
-    implementation(project(":core:database"))
-    implementation(project(":core:ui"))
-    implementation(project(":core:data"))
-    implementation(project(":core:di"))
-
-    // Feature modules
-    implementation(project(":feature:auth"))
-    implementation(project(":feature:space"))
-    implementation(project(":feature:chat"))
-    implementation(project(":feature:moment"))
-    implementation(project(":feature:profile"))
+//    implementation(project(":core:common"))
+//    implementation(project(":core:network"))
+//    implementation(project(":core:database"))
+//    implementation(project(":core:ui"))
+//    implementation(project(":core:data"))
+//    implementation(project(":core:di"))
+//
+//    // Feature modules
+//    implementation(project(":feature:auth"))
+//    implementation(project(":feature:space"))
+//    implementation(project(":feature:chat"))
+//    implementation(project(":feature:moment"))
+//    implementation(project(":feature:profile"))
 
     // AndroidX
     implementation(libs.androidx.core.ktx)
