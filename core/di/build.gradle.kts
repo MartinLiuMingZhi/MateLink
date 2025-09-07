@@ -4,6 +4,10 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+hilt{
+    enableAggregatingTask = true
+}
+
 android {
     namespace = "com.xichen.matelink.core.di"
 }
