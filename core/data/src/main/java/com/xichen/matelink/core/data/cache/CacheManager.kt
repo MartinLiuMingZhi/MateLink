@@ -7,6 +7,7 @@ import com.jakewharton.disklrucache.DiskLruCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.DecimalFormat
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,6 +19,8 @@ import javax.inject.Singleton
 class CacheManager @Inject constructor(
     private val context: Context
 ) {
+    
+    private val decimalFormat = DecimalFormat("#.##")
     
     // 内存缓存配置
     private val maxMemory = (Runtime.getRuntime().maxMemory() / 1024).toInt()
@@ -39,7 +42,7 @@ class CacheManager @Inject constructor(
             File(context.cacheDir, "app_cache"),
             1,
             1,
-            50 * 1024 * 1024 // 50MB
+            50L * 1024 * 1024 // 50MB
         )
     }
     
@@ -127,8 +130,8 @@ class CacheManager @Inject constructor(
         return CacheStats(
             memorySize = memorySize,
             memoryMaxSize = memoryMaxSize,
-            memoryHitCount = memoryHitCount,
-            memoryMissCount = memoryMissCount,
+            memoryHitCount = memoryHitCount.toLong(),
+            memoryMissCount = memoryMissCount.toLong(),
             diskSize = diskSize,
             diskMaxSize = diskMaxSize
         )
@@ -159,7 +162,7 @@ class CacheManager @Inject constructor(
         try {
             // 清理7天前的磁盘缓存
             val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000)
-            diskCache.evictAll() // 简化实现，实际可以根据时间戳清理
+            diskCache.delete() // 简化实现，实际可以根据时间戳清理
         } catch (e: Exception) {
             // 忽略清理失败
         }

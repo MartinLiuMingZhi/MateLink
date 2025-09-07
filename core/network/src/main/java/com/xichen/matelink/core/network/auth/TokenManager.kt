@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.xichen.matelink.core.network.api.AuthApi
 import com.xichen.matelink.core.network.interceptor.TokenProvider
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map

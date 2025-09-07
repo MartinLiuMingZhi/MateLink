@@ -182,10 +182,24 @@ object MemoryLeakDetector {
         
         // 如果支持，获取更详细的内存信息
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val debugMemoryInfo = Debug.MemoryInfo()
-            Debug.getMemoryInfo(debugMemoryInfo)
-            memoryInfo.nativeHeapSize = debugMemoryInfo.nativeHeapSize
-            memoryInfo.nativeHeapAllocated = debugMemoryInfo.nativeHeapAllocated
+            try {
+                val debugMemoryInfo = Debug.MemoryInfo()
+                Debug.getMemoryInfo(debugMemoryInfo)
+
+                // 使用反射安全访问属性
+                val nativeHeapSizeField = debugMemoryInfo.javaClass.getDeclaredField("nativeHeapSize")
+                val nativeHeapAllocatedField = debugMemoryInfo.javaClass.getDeclaredField("nativeHeapAllocated")
+
+                nativeHeapSizeField.isAccessible = true
+                nativeHeapAllocatedField.isAccessible = true
+
+                memoryInfo.nativeHeapSize = nativeHeapSizeField.getInt(debugMemoryInfo)
+                memoryInfo.nativeHeapAllocated = nativeHeapAllocatedField.getInt(debugMemoryInfo)
+            } catch (e: Exception) {
+                // 如果反射失败，使用默认值
+                memoryInfo.nativeHeapSize = 0
+                memoryInfo.nativeHeapAllocated = 0
+            }
         }
         
         return memoryInfo

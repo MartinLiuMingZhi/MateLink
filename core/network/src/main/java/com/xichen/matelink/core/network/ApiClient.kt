@@ -112,4 +112,11 @@ class ApiClient @Inject constructor(
             // 忽略清除缓存失败
         }
     }
+    
+    /**
+     * 获取OkHttpClient实例
+     */
+    fun getOkHttpClient(): OkHttpClient {
+        return okHttpClient
+    }
 }

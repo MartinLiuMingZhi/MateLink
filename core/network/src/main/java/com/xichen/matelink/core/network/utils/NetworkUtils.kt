@@ -103,11 +103,11 @@ class NetworkUtils @Inject constructor(
      */
     suspend fun <T> handlePagedRequest(
         apiCall: suspend () -> Response<com.xichen.matelink.core.network.auth.ApiResponse<com.xichen.matelink.core.network.model.PageResponse<T>>>
-    ): Result<com.xichen.matelink.core.network.model.PageResponse<T>> {
+    ): Result<com.xichen.matelink.core.network.auth.ApiResponse<com.xichen.matelink.core.network.model.PageResponse<T>>> {
         return safeApiCall {
             val response = apiCall()
             if (response.isSuccessful && response.body()?.success == true) {
-                Response.success(response.body()?.data)
+                Response.success(response.body())
             } else {
                 response
             }

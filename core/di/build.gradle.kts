@@ -14,6 +14,9 @@ dependencies {
     implementation(project(":core:database"))
     implementation(project(":core:data"))
     
+    // Network
+    implementation(libs.okhttp)
+    
     // Hilt
     implementation(libs.hilt.android)
     kapt(libs.hilt.compiler)

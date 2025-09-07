@@ -2,224 +2,179 @@ package com.xichen.matelink.core.ui.image
 
 import android.content.Context
 import coil.ImageLoader
-import coil.disk.DiskCache
-import coil.memory.MemoryCache
+import coil.request.CachePolicy
+import coil.util.DebugLogger
+import com.xichen.matelink.core.common.utils.MemoryUtils
+import com.xichen.matelink.core.common.utils.MemoryStatus
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import javax.inject.Inject
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
 import javax.inject.Singleton
+
+// Import the qualifier annotation
+import com.xichen.matelink.core.ui.image.DefaultImageLoader
 
 /**
  * 图片缓存管理器
- * 基于Coil的缓存管理和优化
+ * 负责管理Coil的图片缓存
  */
+
+// ImageCacheModule moved to ImageLoaderManager.kt to avoid dependency resolution issues
+
 @Singleton
-class ImageCacheManager @Inject constructor(
+class ImageCacheManager @javax.inject.Inject constructor(
     private val context: Context,
-    private val imageLoaderManager: ImageLoaderManager
+    private val imageLoader: ImageLoader
 ) {
     
-    /**
-     * 获取图片缓存统计信息
-     */
-    fun getCacheStats(): ImageCacheStatistics {
-        val defaultLoader = imageLoaderManager.defaultImageLoader
-        val avatarLoader = imageLoaderManager.avatarImageLoader
-        val largeLoader = imageLoaderManager.largeImageLoader
-        val thumbnailLoader = imageLoaderManager.thumbnailImageLoader
-        
-        return ImageCacheStatistics(
-            defaultCache = getCacheInfo(defaultLoader),
-            avatarCache = getCacheInfo(avatarLoader),
-            largeImageCache = getCacheInfo(largeLoader),
-            thumbnailCache = getCacheInfo(thumbnailLoader)
-        )
-    }
+    private val cacheScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     
     /**
-     * 获取单个ImageLoader的缓存信息
+     * 获取缓存统计信息
      */
-    private fun getCacheInfo(imageLoader: ImageLoader): CacheInfo {
+    suspend fun getCacheStats(): CacheStats {
         val memoryCache = imageLoader.memoryCache
         val diskCache = imageLoader.diskCache
         
-        return CacheInfo(
-            memorySize = memoryCache?.size ?: 0,
-            memoryMaxSize = memoryCache?.maxSize ?: 0,
-            diskSize = diskCache?.size ?: 0,
-            diskMaxSize = diskCache?.maxSize ?: 0
+        return CacheStats(
+            memoryCacheSize = (memoryCache?.size ?: 0).toLong(),
+            memoryCacheMaxSize = (memoryCache?.maxSize ?: 0).toLong(),
+            diskCacheSize = (diskCache?.size ?: 0).toLong(),
+            diskCacheMaxSize = (diskCache?.maxSize ?: 0).toLong(),
+            memoryHitCount = 0L, // Coil doesn't expose hit/miss counts directly
+            memoryMissCount = 0L,
+            diskHitCount = 0L,
+            diskMissCount = 0L
         )
-    }
-    
-    /**
-     * 清理所有图片缓存
-     */
-    suspend fun clearAllCache() = withContext(Dispatchers.IO) {
-        imageLoaderManager.clearAllImageCache()
     }
     
     /**
      * 清理内存缓存
      */
     fun clearMemoryCache() {
-        imageLoaderManager.defaultImageLoader.memoryCache?.clear()
-        imageLoaderManager.avatarImageLoader.memoryCache?.clear()
-        imageLoaderManager.largeImageLoader.memoryCache?.clear()
-        imageLoaderManager.thumbnailImageLoader.memoryCache?.clear()
+        imageLoader.memoryCache?.clear()
     }
     
     /**
      * 清理磁盘缓存
      */
-    suspend fun clearDiskCache() = withContext(Dispatchers.IO) {
-        imageLoaderManager.defaultImageLoader.diskCache?.clear()
-        imageLoaderManager.avatarImageLoader.diskCache?.clear()
-        imageLoaderManager.largeImageLoader.diskCache?.clear()
-        imageLoaderManager.thumbnailImageLoader.diskCache?.clear()
+    suspend fun clearDiskCache() {
+        imageLoader.diskCache?.clear()
     }
     
     /**
-     * 根据内存压力清理缓存
+     * 清理所有缓存
      */
-    suspend fun cleanupByMemoryPressure(memoryStatus: MemoryStatus) {
+    suspend fun clearAllCache() {
+        clearMemoryCache()
+        clearDiskCache()
+    }
+    
+    /**
+     * 根据内存状态调整缓存策略
+     */
+    fun adjustCachePolicy() {
+        val memoryUtils = MemoryUtils(context)
+        val memoryStatus = memoryUtils.getMemoryStatus()
+        
         when (memoryStatus) {
             MemoryStatus.CRITICAL -> {
-                // 危险状态：清理所有缓存
-                clearAllCache()
+                // 危险内存时清理内存缓存
+                clearMemoryCache()
             }
             MemoryStatus.HIGH -> {
-                // 高使用率：清理大图缓存
-                imageLoaderManager.largeImageLoader.memoryCache?.clear()
-                imageLoaderManager.thumbnailImageLoader.diskCache?.clear()
+                // 高内存时保持当前策略
             }
             MemoryStatus.MODERATE -> {
-                // 中等使用率：清理缩略图内存缓存
-                imageLoaderManager.thumbnailImageLoader.memoryCache?.clear()
+                // 中等内存时保持当前策略
             }
             MemoryStatus.GOOD -> {
-                // 良好状态：无需清理
+                // 良好内存时保持当前策略
             }
         }
     }
     
     /**
-     * 预加载图片
+     * 预加载图片到缓存
      */
-    suspend fun preloadImage(
-        imageUrl: String,
-        size: coil.size.Size = coil.size.Size.ORIGINAL
-    ) = withContext(Dispatchers.IO) {
-        val request = coil.request.ImageRequest.Builder(context)
-            .data(imageUrl)
-            .size(size)
-            .build()
-        
-        imageLoaderManager.defaultImageLoader.execute(request)
-    }
-    
-    /**
-     * 批量预加载图片
-     */
-    suspend fun preloadImages(
-        imageUrls: List<String>,
-        maxConcurrent: Int = 3
-    ) = withContext(Dispatchers.IO) {
-        imageUrls.chunked(maxConcurrent).forEach { chunk ->
-            chunk.map { url ->
-                kotlinx.coroutines.async {
-                    preloadImage(url, coil.size.Size(300, 300))
+    fun preloadImages(urls: List<String>) {
+        cacheScope.launch {
+            urls.map { url ->
+                async {
+                    try {
+                        imageLoader.enqueue(
+                            coil.request.ImageRequest.Builder(context)
+                                .data(url)
+                                .build()
+                        )
+                    } catch (e: Exception) {
+                        // 预加载失败，忽略错误
+                    }
                 }
-            }.forEach { it.await() }
+            }.awaitAll()
         }
     }
     
     /**
-     * 获取图片文件大小
+     * 获取缓存大小（格式化）
      */
-    suspend fun getImageFileSize(imageUrl: String): Long = withContext(Dispatchers.IO) {
-        try {
-            val diskCache = imageLoaderManager.defaultImageLoader.diskCache
-            diskCache?.openSnapshot(imageUrl)?.use { snapshot ->
-                snapshot.data.size
-            } ?: 0L
-        } catch (e: Exception) {
-            0L
-        }
-    }
-    
-    /**
-     * 检查图片是否已缓存
-     */
-    fun isImageCached(imageUrl: String): Boolean {
-        val memoryCache = imageLoaderManager.defaultImageLoader.memoryCache
-        return memoryCache?.get(coil.memory.MemoryCache.Key(imageUrl)) != null
-    }
-    
-    /**
-     * 获取缓存大小（格式化字符串）
-     */
-    fun getFormattedCacheSize(): String {
+    suspend fun getFormattedCacheSize(): String {
         val stats = getCacheStats()
-        val totalBytes = stats.getTotalSize()
-        return formatBytes(totalBytes)
+        val totalSize = stats.memoryCacheSize + stats.diskCacheSize
+        return formatBytes(totalSize)
     }
     
     /**
-     * 格式化字节大小
+     * 格式化字节数
      */
     private fun formatBytes(bytes: Long): String {
-        val kb = bytes / 1024.0
-        val mb = kb / 1024.0
-        val gb = mb / 1024.0
+        val units = arrayOf("B", "KB", "MB", "GB")
+        var size = bytes.toDouble()
+        var unitIndex = 0
         
-        return when {
-            gb >= 1 -> String.format("%.2f GB", gb)
-            mb >= 1 -> String.format("%.2f MB", mb)
-            kb >= 1 -> String.format("%.2f KB", kb)
-            else -> "$bytes B"
+        while (size >= 1024 && unitIndex < units.size - 1) {
+            size /= 1024
+            unitIndex++
         }
+        
+        return String.format("%.2f %s", size, units[unitIndex])
     }
 }
 
 /**
- * 缓存信息
+ * 缓存统计信息
  */
-data class CacheInfo(
-    val memorySize: Long,       // 内存缓存大小
-    val memoryMaxSize: Long,    // 内存缓存最大大小
-    val diskSize: Long,         // 磁盘缓存大小
-    val diskMaxSize: Long       // 磁盘缓存最大大小
+data class CacheStats(
+    val memoryCacheSize: Long,
+    val memoryCacheMaxSize: Long,
+    val diskCacheSize: Long,
+    val diskCacheMaxSize: Long,
+    val memoryHitCount: Long,
+    val memoryMissCount: Long,
+    val diskHitCount: Long,
+    val diskMissCount: Long
 ) {
-    val memoryUsagePercent: Float
-        get() = if (memoryMaxSize > 0) (memorySize.toFloat() / memoryMaxSize) * 100 else 0f
+    val memoryHitRate: Float
+        get() = if (memoryHitCount + memoryMissCount > 0) {
+            memoryHitCount.toFloat() / (memoryHitCount + memoryMissCount)
+        } else 0f
     
-    val diskUsagePercent: Float
-        get() = if (diskMaxSize > 0) (diskSize.toFloat() / diskMaxSize) * 100 else 0f
-}
-
-/**
- * 图片缓存统计信息
- */
-data class ImageCacheStatistics(
-    val defaultCache: CacheInfo,
-    val avatarCache: CacheInfo,
-    val largeImageCache: CacheInfo,
-    val thumbnailCache: CacheInfo
-) {
-    fun getTotalSize(): Long {
-        return defaultCache.memorySize + defaultCache.diskSize +
-               avatarCache.memorySize + avatarCache.diskSize +
-               largeImageCache.memorySize + largeImageCache.diskSize +
-               thumbnailCache.memorySize + thumbnailCache.diskSize
-    }
+    val diskHitRate: Float
+        get() = if (diskHitCount + diskMissCount > 0) {
+            diskHitCount.toFloat() / (diskHitCount + diskMissCount)
+        } else 0f
     
-    fun getTotalMemorySize(): Long {
-        return defaultCache.memorySize + avatarCache.memorySize +
-               largeImageCache.memorySize + thumbnailCache.memorySize
-    }
-    
-    fun getTotalDiskSize(): Long {
-        return defaultCache.diskSize + avatarCache.diskSize +
-               largeImageCache.diskSize + thumbnailCache.diskSize
-    }
+    val totalHitRate: Float
+        get() = if (memoryHitCount + memoryMissCount + diskHitCount + diskMissCount > 0) {
+            (memoryHitCount + diskHitCount).toFloat() / 
+            (memoryHitCount + memoryMissCount + diskHitCount + diskMissCount)
+        } else 0f
 }

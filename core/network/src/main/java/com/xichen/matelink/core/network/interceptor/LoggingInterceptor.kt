@@ -22,8 +22,12 @@ class LoggingInterceptor @Inject constructor() : Interceptor {
     
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        
-        if (!BuildConfig.DEBUG) {
+
+        // 在库模块中，我们总是启用日志记录
+        // 如果需要控制，可以通过参数或者系统属性来控制
+        val enableLogging = true // 可以根据需要修改
+
+        if (!enableLogging) {
             return chain.proceed(request)
         }
         

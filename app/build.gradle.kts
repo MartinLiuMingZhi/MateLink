@@ -19,6 +19,11 @@ android {
     }
 }
 
+// Hilt configuration
+hilt {
+    enableAggregatingTask = false
+}
+
 dependencies {
     // Core modules
     implementation(project(":core:common"))

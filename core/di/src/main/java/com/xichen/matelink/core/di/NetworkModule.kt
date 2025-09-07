@@ -100,6 +100,8 @@ object NetworkModule {
         return tokenManager
     }
     
+    // OkHttpClient provider temporarily removed to resolve dependency issues
+    
     /**
      * 提供API客户端
      */

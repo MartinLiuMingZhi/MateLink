@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -126,8 +127,8 @@ class StorageManager @Inject constructor(
     /**
      * 保存复杂对象到DataStore
      */
-    suspend inline fun <reified T> saveObject(key: String, obj: T) {
-        val jsonString = json.encodeToString(obj)
+    suspend fun <T> saveObject(key: String, obj: T, serializer: kotlinx.serialization.KSerializer<T>) {
+        val jsonString = json.encodeToString(serializer, obj)
         context.appDataStore.edit { preferences ->
             preferences[stringPreferencesKey(key)] = jsonString
         }
@@ -136,11 +137,11 @@ class StorageManager @Inject constructor(
     /**
      * 从DataStore获取复杂对象
      */
-    inline fun <reified T> getObject(key: String): Flow<T?> {
+    fun <T> getObject(key: String, serializer: kotlinx.serialization.KSerializer<T>): Flow<T?> {
         return context.appDataStore.data.map { preferences ->
             try {
                 preferences[stringPreferencesKey(key)]?.let { jsonString ->
-                    json.decodeFromString<T>(jsonString)
+                    json.decodeFromString(serializer, jsonString)
                 }
             } catch (e: Exception) {
                 null

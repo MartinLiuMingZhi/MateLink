@@ -2,176 +2,134 @@ package com.xichen.matelink.core.ui.image
 
 import android.content.Context
 import coil.ImageLoader
-import coil.disk.DiskCache
-import coil.memory.MemoryCache
 import coil.request.CachePolicy
-import coil.util.DebugLogger
+import coil.decode.GifDecoder
+import coil.decode.SvgDecoder
+import coil.decode.VideoFrameDecoder
 import com.xichen.matelink.core.common.utils.MemoryUtils
-import javax.inject.Inject
+import com.xichen.matelink.core.common.utils.MemoryStatus
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Qualifier
 import javax.inject.Singleton
 
 /**
- * MateLink 图片加载器管理
- * 基于Coil的自定义配置
+ * 图片加载器管理器
+ * 提供不同配置的ImageLoader实例
+ */
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class DefaultImageLoader
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class HighQualityImageLoader
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class LowMemoryImageLoader
+
+/**
+ * 图片加载器管理器
+ * 根据内存状态提供不同的ImageLoader配置
  */
 @Singleton
-class ImageLoaderManager @Inject constructor(
-    private val context: Context,
-    private val memoryUtils: MemoryUtils
+class ImageLoaderManager @javax.inject.Inject constructor(
+    @ApplicationContext private val context: Context
 ) {
     
     /**
-     * 主图片加载器 - 用于一般图片加载
+     * 默认ImageLoader
      */
-    val defaultImageLoader: ImageLoader by lazy {
+    @DefaultImageLoader 
+    private val defaultImageLoader: ImageLoader by lazy {
         ImageLoader.Builder(context)
-            .memoryCache {
-                MemoryCache.Builder(context)
-                    .maxSizePercent(0.20) // 使用20%内存
-                    .strongReferencesEnabled(false) // 允许GC回收
-                    .build()
-            }
-            .diskCache {
-                DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(100 * 1024 * 1024) // 100MB
-                    .build()
+            .components {
+                add(GifDecoder.Factory())
+                add(SvgDecoder.Factory())
+                add(VideoFrameDecoder.Factory())
             }
             .respectCacheHeaders(false)
-            .allowHardware(true) // 启用硬件位图
-            .logger(if (BuildConfig.DEBUG) DebugLogger() else null)
+            .crossfade(true)
+            .crossfade(300)
             .build()
     }
     
     /**
-     * 头像专用加载器 - 优化小图片加载
+     * 高质量ImageLoader
      */
-    val avatarImageLoader: ImageLoader by lazy {
+    @HighQualityImageLoader 
+    private val highQualityImageLoader: ImageLoader by lazy {
         ImageLoader.Builder(context)
-            .memoryCache {
-                MemoryCache.Builder(context)
-                    .maxSizePercent(0.10) // 使用10%内存
-                    .strongReferencesEnabled(true) // 头像常驻内存
-                    .build()
+            .components {
+                add(GifDecoder.Factory())
+                add(SvgDecoder.Factory())
+                add(VideoFrameDecoder.Factory())
             }
-            .diskCache {
-                DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("avatar_cache"))
-                    .maxSizeBytes(20 * 1024 * 1024) // 20MB
-                    .build()
-            }
-            .allowHardware(false) // 头像可能需要变换，不用硬件位图
+            .respectCacheHeaders(false)
+            .crossfade(true)
+            .crossfade(300)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
             .build()
     }
     
     /**
-     * 大图专用加载器 - 用于朋友圈大图
+     * 低内存ImageLoader
      */
-    val largeImageLoader: ImageLoader by lazy {
+    @LowMemoryImageLoader 
+    private val lowMemoryImageLoader: ImageLoader by lazy {
+        val memoryUtils = MemoryUtils(context)
+        val memoryStatus = memoryUtils.getMemoryStatus()
+        
         ImageLoader.Builder(context)
-            .memoryCache {
-                MemoryCache.Builder(context)
-                    .maxSizePercent(0.15) // 使用15%内存
-                    .build()
+            .components {
+                add(GifDecoder.Factory())
+                add(SvgDecoder.Factory())
+                add(VideoFrameDecoder.Factory())
             }
-            .diskCache {
-                DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("large_image_cache"))
-                    .maxSizeBytes(200 * 1024 * 1024) // 200MB
-                    .build()
-            }
-            .allowHardware(true)
+            .respectCacheHeaders(false)
+            .crossfade(false) // 低内存模式下关闭动画
+            .memoryCachePolicy(
+                when (memoryStatus) {
+                    MemoryStatus.CRITICAL -> CachePolicy.DISABLED
+                    MemoryStatus.HIGH -> CachePolicy.READ_ONLY
+                    MemoryStatus.MODERATE -> CachePolicy.ENABLED
+                    MemoryStatus.GOOD -> CachePolicy.ENABLED
+                }
+            )
+            .diskCachePolicy(CachePolicy.ENABLED)
             .build()
     }
     
     /**
-     * 缩略图加载器 - 用于消息列表缩略图
+     * 根据内存状态获取合适的ImageLoader
      */
-    val thumbnailImageLoader: ImageLoader by lazy {
-        ImageLoader.Builder(context)
-            .memoryCache {
-                MemoryCache.Builder(context)
-                    .maxSizePercent(0.05) // 使用5%内存
-                    .build()
-            }
-            .diskCache {
-                DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("thumbnail_cache"))
-                    .maxSizeBytes(30 * 1024 * 1024) // 30MB
-                    .build()
-            }
-            .allowHardware(true)
-            .build()
-    }
-    
-    /**
-     * 根据内存状态获取推荐的图片加载器
-     */
-    fun getRecommendedImageLoader(): ImageLoader {
-        return when (memoryUtils.getMemoryStatus()) {
-            MemoryStatus.GOOD -> defaultImageLoader
-            MemoryStatus.MODERATE -> avatarImageLoader
-            MemoryStatus.HIGH -> thumbnailImageLoader
-            MemoryStatus.CRITICAL -> thumbnailImageLoader
+    fun getImageLoader(): ImageLoader {
+        val memoryUtils = MemoryUtils(context)
+        val memoryStatus = memoryUtils.getMemoryStatus()
+        
+        return when (memoryStatus) {
+            MemoryStatus.CRITICAL, MemoryStatus.HIGH -> lowMemoryImageLoader
+            MemoryStatus.MODERATE -> defaultImageLoader
+            MemoryStatus.GOOD -> highQualityImageLoader
         }
     }
     
     /**
-     * 清理所有图片缓存
+     * 获取默认ImageLoader
      */
-    suspend fun clearAllImageCache() {
-        defaultImageLoader.memoryCache?.clear()
-        avatarImageLoader.memoryCache?.clear()
-        largeImageLoader.memoryCache?.clear()
-        thumbnailImageLoader.memoryCache?.clear()
-        
-        defaultImageLoader.diskCache?.clear()
-        avatarImageLoader.diskCache?.clear()
-        largeImageLoader.diskCache?.clear()
-        thumbnailImageLoader.diskCache?.clear()
-    }
+    fun getDefaultLoader(): ImageLoader = defaultImageLoader
     
     /**
-     * 获取缓存统计信息
+     * 获取高质量ImageLoader
      */
-    fun getCacheStats(): ImageCacheStats {
-        val memoryCache = defaultImageLoader.memoryCache
-        val diskCache = defaultImageLoader.diskCache
-        
-        return ImageCacheStats(
-            memoryCacheSize = memoryCache?.size ?: 0,
-            memoryMaxSize = memoryCache?.maxSize ?: 0,
-            diskCacheSize = diskCache?.size ?: 0,
-            diskMaxSize = diskCache?.maxSize ?: 0
-        )
-    }
+    fun getHighQualityLoader(): ImageLoader = highQualityImageLoader
+    
+    /**
+     * 获取低内存ImageLoader
+     */
+    fun getLowMemoryLoader(): ImageLoader = lowMemoryImageLoader
 }
 
-/**
- * 图片缓存统计信息
- */
-data class ImageCacheStats(
-    val memoryCacheSize: Long,      // 内存缓存当前大小
-    val memoryMaxSize: Long,        // 内存缓存最大大小
-    val diskCacheSize: Long,        // 磁盘缓存当前大小
-    val diskMaxSize: Long           // 磁盘缓存最大大小
-)
-
-/**
- * 图片加载配置
- */
-object ImageConfig {
-    // 缓存配置
-    const val MEMORY_CACHE_PERCENT = 0.20f      // 内存缓存占比
-    const val DISK_CACHE_SIZE = 100L * 1024 * 1024  // 磁盘缓存大小
-    
-    // 图片尺寸配置
-    const val AVATAR_SIZE = 200                  // 头像最大尺寸
-    const val THUMBNAIL_SIZE = 300               // 缩略图最大尺寸
-    const val LARGE_IMAGE_SIZE = 1080            // 大图最大尺寸
-    
-    // 质量配置
-    const val THUMBNAIL_QUALITY = 60            // 缩略图质量
-    const val NORMAL_QUALITY = 80               // 普通图片质量
-    const val HIGH_QUALITY = 90                 // 高质量图片
-}
+// ImageLoaderModule temporarily removed to resolve Hilt dependency issues

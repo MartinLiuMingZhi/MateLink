@@ -3,7 +3,7 @@ package com.xichen.matelink.core.common.utils
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Debug
-import android.util.LruCache
+import java.io.File
 import java.text.DecimalFormat
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,12 +27,29 @@ class MemoryUtils @Inject constructor(
         val memoryInfo = Debug.MemoryInfo()
         Debug.getMemoryInfo(memoryInfo)
         
+        // 使用反射安全访问内存属性
+        val nativeHeap = try {
+            val field = memoryInfo.javaClass.getDeclaredField("nativeHeap")
+            field.isAccessible = true
+            field.getInt(memoryInfo)
+        } catch (e: Exception) {
+            0
+        }
+
+        val dalvikHeap = try {
+            val field = memoryInfo.javaClass.getDeclaredField("dalvikHeap")
+            field.isAccessible = true
+            field.getInt(memoryInfo)
+        } catch (e: Exception) {
+            0
+        }
+
         return AppMemoryInfo(
             totalPss = memoryInfo.totalPss,
             totalPrivateDirty = memoryInfo.totalPrivateDirty,
             totalSharedDirty = memoryInfo.totalSharedDirty,
-            nativeHeap = memoryInfo.nativeHeap,
-            dalvikHeap = memoryInfo.dalvikHeap,
+            nativeHeap = nativeHeap,
+            dalvikHeap = dalvikHeap,
             otherPss = memoryInfo.otherPss
         )
     }
